@@ -17,8 +17,8 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { GongClient } from '../src/gong-client.js';
-import { createGongMcpServer } from '../src/server.js';
+import { GongClient } from '../dist/gong-client.js';
+import { createGongMcpServer } from '../dist/server.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow POST requests

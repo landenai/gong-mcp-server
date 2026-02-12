@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "vercel-build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "dev:vercel": "vercel dev",
