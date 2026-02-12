@@ -7,11 +7,12 @@
  * Environment variables (set in Vercel dashboard):
  *   GONG_ACCESS_KEY - Shared team Gong API access key
  *   GONG_ACCESS_KEY_SECRET - Shared team Gong API secret
+ *   ALLOWED_EMAIL_DOMAINS - Comma-separated list of allowed email domains (e.g., "sentry.io,getsentry.com")
  *
  * Authentication Model:
- *   - Uses shared team credentials for all users
- *   - Credentials stored as Vercel environment variables (encrypted at rest)
- *   - Access controlled by Cowork workspace permissions
+ *   - Requires Google ID token in Authorization header
+ *   - Verifies token and checks email domain against ALLOWED_EMAIL_DOMAINS
+ *   - Only users with @sentry.io (or configured) emails can access
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -27,7 +28,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // 1. Validate environment variables
+    // 1. Authenticate request - Verify Google ID token
+    const allowedDomains = (process.env.ALLOWED_EMAIL_DOMAINS || 'sentry.io').split(',').map(d => d.trim());
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Google ID token required in Authorization header. Format: "Bearer <id_token>"',
+      });
+      return;
+    }
+
+    const idToken = authHeader.replace('Bearer ', '');
+
+    // Verify Google ID token and extract email
+    const email = await verifyGoogleToken(idToken);
+
+    if (!email) {
+      res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Invalid or expired Google ID token',
+      });
+      return;
+    }
+
+    // Check if email domain is allowed
+    const emailDomain = email.split('@')[1];
+    if (!allowedDomains.includes(emailDomain)) {
+      console.warn(`Access denied for email domain: ${emailDomain}`);
+      res.status(403).json({
+        error: 'Forbidden',
+        message: `Access restricted to ${allowedDomains.join(', ')} email addresses. Your email: ${email}`,
+      });
+      return;
+    }
+
+    console.log(`Authenticated user: ${email}`);
+
+    // 2. Validate Gong credentials
     const accessKey = process.env.GONG_ACCESS_KEY;
     const accessKeySecret = process.env.GONG_ACCESS_KEY_SECRET;
 
@@ -40,40 +79,66 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    // 2. Create per-request GongClient instance
+    // 3. Create per-request GongClient instance
     const gongClient = new GongClient({ accessKey, accessKeySecret });
 
-    // 3. Create MCP server via factory
+    // 4. Create MCP server via factory
     const mcpServer = createGongMcpServer(gongClient);
 
-    // 4. Create stateless WebStandardStreamableHTTPServerTransport
-    // Note: No sessionIdGenerator = stateless mode (perfect for serverless)
+    // 5. Create stateless WebStandardStreamableHTTPServerTransport
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // Stateless mode
     });
 
-    // 5. Connect server to transport
+    // 6. Connect server to transport
     await mcpServer.connect(transport);
 
-    // 6. Convert VercelRequest to Web Standard Request
+    // 7. Convert VercelRequest to Web Standard Request
     const webRequest = convertVercelRequestToWebRequest(req);
 
-    // 7. Call transport.handleRequest()
+    // 8. Call transport.handleRequest()
     const webResponse = await transport.handleRequest(webRequest);
 
-    // 8. Stream response back
+    // 9. Stream response back
     await streamWebResponseToVercel(webResponse, res);
 
   } catch (error) {
     console.error('Error handling MCP request:', error);
 
-    // Check if response has already been sent
     if (!res.headersSent) {
       res.status(500).json({
         error: 'Internal Server Error',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
+  }
+}
+
+/**
+ * Verify Google ID token and extract email
+ * Uses Google's tokeninfo endpoint (no client library needed)
+ */
+async function verifyGoogleToken(idToken: string): Promise<string | null> {
+  try {
+    const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
+
+    if (!response.ok) {
+      console.error('Google token verification failed:', response.status);
+      return null;
+    }
+
+    const tokenInfo = await response.json();
+
+    // Check if token is valid and not expired
+    if (!tokenInfo.email || !tokenInfo.email_verified) {
+      console.error('Token email not verified');
+      return null;
+    }
+
+    return tokenInfo.email;
+  } catch (error) {
+    console.error('Error verifying Google token:', error);
+    return null;
   }
 }
 
