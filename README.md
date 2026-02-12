@@ -2,6 +2,10 @@
 
 An MCP (Model Context Protocol) server that connects Claude to your Gong data. Query calls, transcripts, deals, emails, and user activity directly from Claude.
 
+**Deployment Options:**
+- **Stdio** (local development) - Use with Claude Desktop or Claude Code CLI
+- **HTTP/Vercel** (serverless deployment) - Deploy as serverless function for team-wide Cowork access
+
 ## Features
 
 | Tool | Description |
@@ -30,7 +34,22 @@ npm install
 npm run build
 ```
 
-### 3. Add to Claude Code
+### 3. Test the Server (Optional)
+
+Before integrating with Claude, test the server with the built-in test UI:
+
+```bash
+# Create .env file with your credentials
+cp .env.example .env
+# Edit .env and add your credentials
+
+# Run the interactive test UI
+npm run test-ui
+```
+
+See [TEST-UI-README.md](TEST-UI-README.md) for detailed instructions.
+
+### 4. Add to Claude Code
 
 ```bash
 claude mcp add gong node ~/projects/gong-mcp-server/dist/index.js \
@@ -46,6 +65,34 @@ Once connected, you can ask Claude things like:
 - "Get the transcript from call ID abc123"
 - "What calls has the Acme account had in Q4?"
 - "List all deals in stage 'Negotiation'"
+
+## Vercel Deployment (HTTP/Serverless)
+
+Deploy the MCP server to Vercel for team-wide HTTP access (e.g., Cowork connectors):
+
+```bash
+# Build the project
+npm run build
+
+# Link to Vercel
+vercel link
+
+# Set environment variables
+vercel env add GONG_ACCESS_KEY production
+vercel env add GONG_ACCESS_KEY_SECRET production
+
+# Deploy to production
+npm run deploy:prod
+```
+
+For detailed deployment instructions, testing strategies, and security considerations, see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+
+### Architecture
+
+- **Transport**: WebStandardStreamableHTTPServerTransport (stateless)
+- **Runtime**: Vercel Node.js serverless functions
+- **Authentication**: Shared team Gong credentials via Vercel environment variables
+- **Endpoint**: `https://your-project.vercel.app/mcp`
 
 ## License
 

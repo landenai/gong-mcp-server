@@ -3,3 +3,9 @@ dist/
 .env
 *.log
 .DS_Store
+
+# Vercel
+.vercel
+.vercel.json
+*.vercel.app
+test-results.json
