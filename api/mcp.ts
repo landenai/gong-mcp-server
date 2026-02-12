@@ -19,6 +19,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { GongClient } from '../dist/gong-client.js';
 import { createGongMcpServer } from '../dist/server.js';
+import { verifyApiToken } from './auth.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow POST requests
@@ -28,27 +29,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // 1. Authenticate request - Verify Google ID token
+    // 1. Authenticate request - Accept API token OR Google ID token
     const allowedDomains = (process.env.ALLOWED_EMAIL_DOMAINS || 'sentry.io').split(',').map(d => d.trim());
 
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       res.status(401).json({
         error: 'Unauthorized',
-        message: 'Google ID token required in Authorization header. Format: "Bearer <id_token>"',
+        message: 'Authentication required. Get a token at: https://gong-mcp-server.sentry.dev/api/auth',
       });
       return;
     }
 
-    const idToken = authHeader.replace('Bearer ', '');
+    const token = authHeader.replace('Bearer ', '');
+    let email: string | null = null;
 
-    // Verify Google ID token and extract email
-    const email = await verifyGoogleToken(idToken);
+    // Try to verify as API token first
+    const apiTokenData = verifyApiToken(token);
+    if (apiTokenData) {
+      email = apiTokenData.email;
+      console.log(`Authenticated with API token: ${email}`);
+    } else {
+      // Fall back to Google ID token verification
+      email = await verifyGoogleToken(token);
+      if (email) {
+        console.log(`Authenticated with Google ID token: ${email}`);
+      }
+    }
 
     if (!email) {
       res.status(401).json({
         error: 'Unauthorized',
-        message: 'Invalid or expired Google ID token',
+        message: 'Invalid or expired token. Get a new token at: https://gong-mcp-server.sentry.dev/api/auth',
       });
       return;
     }
@@ -63,8 +75,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
       return;
     }
-
-    console.log(`Authenticated user: ${email}`);
 
     // 2. Validate Gong credentials
     const accessKey = process.env.GONG_ACCESS_KEY;
