@@ -11,6 +11,7 @@ An MCP (Model Context Protocol) server that connects Claude to your Gong data. Q
 | Tool | Description |
 |------|-------------|
 | `gong_list_calls` | List recent calls with date filters |
+| `gong_search_calls_by_text` | **NEW!** Search calls by title or participant name/email with smart date-range filtering |
 | `gong_get_call_details` | Get detailed call info including CRM context and topics |
 | `gong_get_transcript` | Get full call transcript with speaker identification |
 | `gong_list_users` | List all users in workspace |
@@ -61,6 +62,8 @@ claude mcp add gong node ~/projects/gong-mcp-server/dist/index.js \
 
 Once connected, you can ask Claude things like:
 
+- "Search for calls about pricing" (uses smart text search)
+- "Find all calls with John Smith as a participant"
 - "Show me all calls from last week"
 - "Get the transcript from call ID abc123"
 - "What calls has the Acme account had in Q4?"

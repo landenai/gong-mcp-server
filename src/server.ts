@@ -75,6 +75,128 @@ export function createGongMcpServer(gong: GongClient): McpServer {
   );
 
   server.tool(
+    "gong_search_calls_by_text",
+    "Search calls by text (title, participants, etc.). Intelligently searches within a date range to avoid pagination limits. Returns matching calls with relevance scoring.",
+    {
+      search_term: z.string().describe("Text to search for in call title, participant names, or participant emails"),
+      from_date: z.string().optional().describe("Start date in ISO format. Defaults to 90 days ago if not specified."),
+      to_date: z.string().optional().describe("End date in ISO format. Defaults to now if not specified."),
+      max_results: z.number().optional().describe("Maximum number of results to return. Defaults to 20."),
+    },
+    async ({ search_term, from_date, to_date, max_results }) => {
+      try {
+        // Set sensible defaults for date range (last 90 days)
+        const now = new Date();
+        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+        const effectiveFromDate = from_date || ninetyDaysAgo.toISOString();
+        const effectiveToDate = to_date || now.toISOString();
+        const effectiveMaxResults = max_results || 20;
+
+        // Fetch calls from the date range with pagination
+        const allCalls: any[] = [];
+        let cursor: string | undefined = undefined;
+        let pagesSearched = 0;
+        const MAX_PAGES = 10; // Limit to prevent too many API calls
+
+        while (pagesSearched < MAX_PAGES) {
+          const result = await gong.listCalls({
+            fromDateTime: effectiveFromDate,
+            toDateTime: effectiveToDate,
+            cursor,
+          });
+
+          allCalls.push(...result.records);
+          cursor = result.cursor;
+          pagesSearched++;
+
+          // Stop if we have enough calls or no more pages
+          if (!cursor || allCalls.length >= 1000) {
+            break;
+          }
+        }
+
+        // Filter calls by search term (case-insensitive)
+        const searchLower = search_term.toLowerCase();
+        const matchingCalls = allCalls
+          .map((call) => {
+            let relevanceScore = 0;
+            const matchReasons: string[] = [];
+
+            // Check title match
+            if (call.title?.toLowerCase().includes(searchLower)) {
+              relevanceScore += 10;
+              matchReasons.push("title");
+            }
+
+            // Check participant names
+            const participantMatches = call.parties?.filter((p: any) =>
+              p.name?.toLowerCase().includes(searchLower) ||
+              p.emailAddress?.toLowerCase().includes(searchLower)
+            ) || [];
+
+            if (participantMatches.length > 0) {
+              relevanceScore += 5 * participantMatches.length;
+              matchReasons.push(`${participantMatches.length} participant(s)`);
+            }
+
+            return {
+              call,
+              relevanceScore,
+              matchReasons,
+            };
+          })
+          .filter(({ relevanceScore }) => relevanceScore > 0)
+          .sort((a, b) => b.relevanceScore - a.relevanceScore)
+          .slice(0, effectiveMaxResults);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  search_info: {
+                    search_term,
+                    date_range: { from: effectiveFromDate, to: effectiveToDate },
+                    calls_searched: allCalls.length,
+                    matches_found: matchingCalls.length,
+                  },
+                  matching_calls: matchingCalls.map(({ call, relevanceScore, matchReasons }) => ({
+                    id: call.id,
+                    title: call.title,
+                    date: call.started,
+                    duration_seconds: call.duration,
+                    direction: call.direction,
+                    url: call.url,
+                    participants: call.parties?.map((p: any) => ({
+                      name: p.name,
+                      email: p.emailAddress,
+                      affiliation: p.affiliation,
+                      title: p.title,
+                    })),
+                    match_info: {
+                      relevance_score: relevanceScore,
+                      match_reasons: matchReasons,
+                    },
+                  })),
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: `Error searching calls: ${error}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
     "gong_get_call_details",
     "Get detailed information about specific calls including CRM context, topics discussed, and trackers detected.",
     {
