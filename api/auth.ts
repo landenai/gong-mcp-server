@@ -11,14 +11,30 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { randomBytes, createHmac } from 'crypto';
-
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const TOKEN_SECRET = process.env.TOKEN_SECRET || 'change-me-in-production';
-const ALLOWED_DOMAINS = (process.env.ALLOWED_EMAIL_DOMAINS || 'sentry.io').split(',').map(d => d.trim());
+import { getSecret } from '../dist/secrets.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { code, error } = req.query;
+
+  // Fetch secrets from GCP Secret Manager (with env var fallback)
+  let GOOGLE_CLIENT_ID: string;
+  let GOOGLE_CLIENT_SECRET: string;
+  let TOKEN_SECRET: string;
+  let ALLOWED_DOMAINS: string[];
+
+  try {
+    [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, TOKEN_SECRET] = await Promise.all([
+      getSecret('GOOGLE_CLIENT_ID'),
+      getSecret('GOOGLE_CLIENT_SECRET'),
+      getSecret('TOKEN_SECRET'),
+    ]);
+    const allowedDomainsStr = await getSecret('ALLOWED_EMAIL_DOMAINS').catch(() => 'sentry.io');
+    ALLOWED_DOMAINS = allowedDomainsStr.split(',').map(d => d.trim());
+  } catch (error) {
+    console.error('Failed to fetch configuration secrets:', error);
+    res.status(500).json({ error: 'Server configuration error' });
+    return;
+  }
 
   // Step 1: Show login page
   if (!code && !error) {
@@ -264,7 +280,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Generate long-lived API token
-    const apiToken = generateApiToken(email);
+    const apiToken = generateApiToken(email, TOKEN_SECRET);
 
     // Show success page with token
     res.setHeader('Content-Type', 'text/html');
@@ -468,11 +484,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
  * Generate a secure API token for the user
  * Format: email:timestamp:signature
  */
-function generateApiToken(email: string): string {
+function generateApiToken(email: string, tokenSecret: string): string {
   const timestamp = Date.now();
   const expiresAt = timestamp + (365 * 24 * 60 * 60 * 1000); // 1 year
   const payload = `${email}:${expiresAt}`;
-  const signature = createHmac('sha256', TOKEN_SECRET)
+  const signature = createHmac('sha256', tokenSecret)
     .update(payload)
     .digest('base64url');
 
@@ -481,14 +497,19 @@ function generateApiToken(email: string): string {
 
 /**
  * Verify and decode an API token
+ * Note: This function needs TOKEN_SECRET from environment/GCP as a fallback
+ * since it's called from other modules (api/mcp.ts) without async context
  */
-export function verifyApiToken(token: string): { email: string; expiresAt: number } | null {
+export function verifyApiToken(token: string, tokenSecret?: string): { email: string; expiresAt: number } | null {
   try {
     const [payloadB64, signature] = token.split('.');
     const payload = Buffer.from(payloadB64, 'base64url').toString('utf-8');
 
+    // Use provided secret or fall back to environment variable
+    const secret = tokenSecret || process.env.TOKEN_SECRET || 'change-me-in-production';
+
     // Verify signature
-    const expectedSignature = createHmac('sha256', TOKEN_SECRET)
+    const expectedSignature = createHmac('sha256', secret)
       .update(payload)
       .digest('base64url');
 

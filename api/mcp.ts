@@ -20,6 +20,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { GongClient } from '../dist/gong-client.js';
 import { createGongMcpServer } from '../dist/server.js';
 import { verifyApiToken } from './auth.js';
+import { getSecret } from '../dist/secrets.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow POST requests
@@ -76,12 +77,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    // 2. Validate Gong credentials
-    const accessKey = process.env.GONG_ACCESS_KEY;
-    const accessKeySecret = process.env.GONG_ACCESS_KEY_SECRET;
+    // 2. Fetch Gong credentials from GCP Secret Manager (with env var fallback)
+    let accessKey: string;
+    let accessKeySecret: string;
 
-    if (!accessKey || !accessKeySecret) {
-      console.error('Missing GONG_ACCESS_KEY or GONG_ACCESS_KEY_SECRET environment variables');
+    try {
+      accessKey = await getSecret('GONG_ACCESS_KEY');
+      accessKeySecret = await getSecret('GONG_ACCESS_KEY_SECRET');
+    } catch (error) {
+      console.error('Failed to fetch Gong API credentials:', error);
       res.status(500).json({
         error: 'Server Configuration Error',
         message: 'Gong API credentials not configured',

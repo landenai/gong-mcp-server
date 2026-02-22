@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .env
+.env.*
 *.log
 .DS_Store
 
@@ -9,3 +10,8 @@ dist/
 .vercel.json
 *.vercel.app
 test-results.json
+
+# GCP Service Account Keys (NEVER COMMIT THESE)
+gcp-key.json
+*-service-account*.json
+*.gcp.json
