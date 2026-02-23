@@ -10,7 +10,8 @@
  *   ALLOWED_EMAIL_DOMAINS - Comma-separated list of allowed email domains (e.g., "sentry.io,getsentry.com")
  *
  * Authentication Model:
- *   - Requires Google ID token in Authorization header
+ *   - Requires Bearer token in Authorization header
+ *   - Accepts JWT tokens (OAuth flow) or manual API tokens
  *   - Verifies token and checks email domain against ALLOWED_EMAIL_DOMAINS
  *   - Only users with @sentry.io (or configured) emails can access
  */
@@ -74,19 +75,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.log(`Authenticated with JWT (MCP-compliant): ${email}`);
       }
     } catch (jwtError) {
-      // JWT verification failed, try legacy token formats
+      // JWT verification failed, try manual API token (custom format)
 
-      // Try to verify as legacy API token
+      // Try to verify as manual API token
       const apiTokenData = verifyApiToken(token, TOKEN_SECRET);
       if (apiTokenData) {
         email = apiTokenData.email;
-        console.log(`Authenticated with legacy API token: ${email}`);
-      } else {
-        // Fall back to Google ID token verification (also legacy)
-        email = await verifyGoogleToken(token);
-        if (email) {
-          console.log(`Authenticated with Google ID token: ${email}`);
-        }
+        console.log(`Authenticated with manual API token: ${email}`);
       }
     }
 
@@ -160,34 +155,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
-  }
-}
-
-/**
- * Verify Google ID token and extract email
- * Uses Google's tokeninfo endpoint (no client library needed)
- */
-async function verifyGoogleToken(idToken: string): Promise<string | null> {
-  try {
-    const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
-
-    if (!response.ok) {
-      console.error('Google token verification failed:', response.status);
-      return null;
-    }
-
-    const tokenInfo = await response.json();
-
-    // Check if token is valid and not expired
-    if (!tokenInfo.email || !tokenInfo.email_verified) {
-      console.error('Token email not verified');
-      return null;
-    }
-
-    return tokenInfo.email;
-  } catch (error) {
-    console.error('Error verifying Google token:', error);
-    return null;
   }
 }
 

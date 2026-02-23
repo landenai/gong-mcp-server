@@ -65,11 +65,6 @@ Receive long-lived API token
 Manually configure MCP client
 ```
 
-### 3. Legacy Google ID Token (Deprecated)
-
-**Use Case**: Backward compatibility
-**Status**: Still supported but not recommended for new integrations
-
 ## MCP-Compliant OAuth Flow
 
 This server implements the [MCP Authorization Specification (2025-06-18)](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization) with full compliance for all MUST requirements.
@@ -338,19 +333,6 @@ Token: base64url(payload) + "." + base64url(signature)
 
 **Validation**: api/auth.ts (verifyApiToken function)
 
-### 3. Google ID Token (Legacy)
-
-**Format**: Google-signed JWT
-**Lifetime**: 1 hour (short-lived)
-**Used by**: Direct API calls (deprecated)
-
-**Validation**:
-- Verify via Google's tokeninfo endpoint
-- Extract email from response
-- Verify email_verified flag
-
-**Validation**: api/mcp.ts:170-192 (verifyGoogleToken function)
-
 ## Architecture Diagram
 
 ```
@@ -396,7 +378,6 @@ Token: base64url(payload) + "." + base64url(signature)
 │  │  Token validation order:                                 │    │
 │  │  1. Try JWT (OAuth flow) with audience validation        │    │
 │  │  2. Try Manual API token (custom format)                 │    │
-│  │  3. Try Google ID token (legacy)                         │    │
 │  │                                                           │    │
 │  │  Returns 401 with WWW-Authenticate header if invalid     │    │
 │  │                                                           │    │

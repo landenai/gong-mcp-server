@@ -4,7 +4,7 @@ This guide walks you through setting up Google OAuth for the improved authentica
 
 ## Overview
 
-Instead of manually getting Google ID tokens, users now:
+The manual token flow provides a simple way for users to get authenticated:
 1. Visit `https://gong-mcp-server.sentry.dev/api/auth`
 2. Click "Sign in with Google"
 3. Authenticate with their `@sentry.io` email

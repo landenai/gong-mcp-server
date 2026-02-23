@@ -196,13 +196,12 @@ Per OAuth 2.1 security considerations:
 
 ## Backward Compatibility
 
-The implementation maintains backward compatibility with legacy token formats:
+The implementation maintains backward compatibility with manual API tokens:
 
-1. **Legacy API tokens** from `/api/auth` (custom format) still work
-2. **Google ID tokens** still supported for direct API calls
-3. **New JWT tokens** used for MCP-compliant OAuth flow
+1. **Manual API tokens** from `/api/auth` (custom format) still work
+2. **New JWT tokens** used for MCP-compliant OAuth flow
 
-The MCP endpoint tries JWT verification first, then falls back to legacy formats.
+The MCP endpoint tries JWT verification first, then falls back to manual API tokens.
 
 ## Testing Compliance
 
