@@ -21,6 +21,7 @@ import { GongClient } from '../dist/gong-client.js';
 import { createGongMcpServer } from '../dist/server.js';
 import { verifyApiToken } from './auth.js';
 import { getSecret } from '../dist/secrets.js';
+import jwt from 'jsonwebtoken';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow POST requests
@@ -30,11 +31,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // 1. Authenticate request - Accept API token OR Google ID token
+    // 1. Authenticate request - Accept JWT (MCP-compliant) OR legacy custom tokens
     const allowedDomains = (process.env.ALLOWED_EMAIL_DOMAINS || 'sentry.io').split(',').map(d => d.trim());
+
+    // Fetch TOKEN_SECRET for JWT verification
+    let TOKEN_SECRET: string;
+    try {
+      TOKEN_SECRET = await getSecret('TOKEN_SECRET');
+    } catch (error) {
+      console.error('Failed to fetch TOKEN_SECRET:', error);
+      res.status(500).json({ error: 'Server configuration error' });
+      return;
+    }
 
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      // Return 401 with WWW-Authenticate header per MCP spec (RFC9728)
+      const resourceMetadataUrl = `https://${req.headers.host}/.well-known/oauth-protected-resource`;
+      res.setHeader('WWW-Authenticate', `Bearer resource_metadata="${resourceMetadataUrl}"`);
       res.status(401).json({
         error: 'Unauthorized',
         message: 'Authentication required. Get a token at: https://gong-mcp-server.sentry.dev/api/auth',
@@ -45,20 +59,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const token = authHeader.replace('Bearer ', '');
     let email: string | null = null;
 
-    // Try to verify as API token first
-    const apiTokenData = verifyApiToken(token);
-    if (apiTokenData) {
-      email = apiTokenData.email;
-      console.log(`Authenticated with API token: ${email}`);
-    } else {
-      // Fall back to Google ID token verification
-      email = await verifyGoogleToken(token);
+    // Expected audience for this MCP server
+    const expectedAudience = `https://${req.headers.host}/mcp`;
+
+    // Try to verify as JWT first (MCP-compliant tokens)
+    try {
+      const decoded = jwt.verify(token, TOKEN_SECRET, {
+        algorithms: ['HS256'],
+        audience: expectedAudience, // Validate audience claim
+      }) as jwt.JwtPayload;
+
+      email = decoded.sub || null;
       if (email) {
-        console.log(`Authenticated with Google ID token: ${email}`);
+        console.log(`Authenticated with JWT (MCP-compliant): ${email}`);
+      }
+    } catch (jwtError) {
+      // JWT verification failed, try legacy token formats
+
+      // Try to verify as legacy API token
+      const apiTokenData = verifyApiToken(token, TOKEN_SECRET);
+      if (apiTokenData) {
+        email = apiTokenData.email;
+        console.log(`Authenticated with legacy API token: ${email}`);
+      } else {
+        // Fall back to Google ID token verification (also legacy)
+        email = await verifyGoogleToken(token);
+        if (email) {
+          console.log(`Authenticated with Google ID token: ${email}`);
+        }
       }
     }
 
     if (!email) {
+      // Return 401 with WWW-Authenticate header per MCP spec
+      const resourceMetadataUrl = `https://${req.headers.host}/.well-known/oauth-protected-resource`;
+      res.setHeader('WWW-Authenticate', `Bearer resource_metadata="${resourceMetadataUrl}"`);
       res.status(401).json({
         error: 'Unauthorized',
         message: 'Invalid or expired token. Get a new token at: https://gong-mcp-server.sentry.dev/api/auth',

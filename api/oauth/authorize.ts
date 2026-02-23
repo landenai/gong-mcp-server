@@ -12,7 +12,15 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getSecret } from '../../dist/secrets.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const { client_id, redirect_uri, state, response_type } = req.query;
+  const {
+    client_id,
+    redirect_uri,
+    state,
+    response_type,
+    code_challenge,
+    code_challenge_method,
+    resource,
+  } = req.query;
 
   // Fetch secrets from GCP Secret Manager (with env var fallback)
   let GOOGLE_CLIENT_ID: string;
@@ -38,7 +46,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  // Validate client_id (for now, just accept Cowork's client)
+  // Validate PKCE parameters (REQUIRED by MCP spec)
+  if (!code_challenge || !code_challenge_method) {
+    res.status(400).json({
+      error: 'invalid_request',
+      error_description: 'PKCE parameters required: code_challenge, code_challenge_method',
+    });
+    return;
+  }
+
+  // Only support S256 as required by MCP spec
+  if (code_challenge_method !== 'S256') {
+    res.status(400).json({
+      error: 'invalid_request',
+      error_description: 'Only code_challenge_method=S256 is supported',
+    });
+    return;
+  }
+
+  // Validate resource parameter (REQUIRED by MCP spec per RFC8707)
+  if (!resource) {
+    res.status(400).json({
+      error: 'invalid_request',
+      error_description: 'resource parameter required (RFC8707)',
+    });
+    return;
+  }
+
+  // Validate resource is our MCP server
+  const expectedResource = `https://${req.headers.host}/mcp`;
+  if (resource !== expectedResource) {
+    res.status(400).json({
+      error: 'invalid_target',
+      error_description: `Invalid resource. Expected: ${expectedResource}`,
+    });
+    return;
+  }
+
+  // Validate client_id
   if (client_id !== COWORK_CLIENT_ID) {
     res.status(401).json({
       error: 'unauthorized_client',
@@ -51,6 +96,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const oauthState = Buffer.from(JSON.stringify({
     cowork_redirect_uri: redirect_uri,
     cowork_state: state,
+    code_challenge,
+    code_challenge_method,
+    resource,
   })).toString('base64url');
 
   // Redirect to Google OAuth with our callback URL

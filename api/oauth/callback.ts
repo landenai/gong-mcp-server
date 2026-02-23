@@ -65,7 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     // Decode OAuth state
     const oauthState = JSON.parse(Buffer.from(state as string, 'base64url').toString('utf-8'));
-    const { cowork_redirect_uri, cowork_state } = oauthState;
+    const { cowork_redirect_uri, cowork_state, code_challenge, code_challenge_method, resource } = oauthState;
 
     // Exchange Google auth code for tokens
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
@@ -124,8 +124,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Generate authorization code (short-lived, single-use)
-    // Format: email:timestamp:random
-    const authCode = generateAuthCode(email, TOKEN_SECRET);
+    // Include PKCE parameters and resource for verification at token endpoint
+    const authCode = generateAuthCode(email, TOKEN_SECRET, code_challenge, resource);
 
     // Redirect back to Cowork with authorization code
     const coworkCallbackUrl = new URL(cowork_redirect_uri as string);
@@ -147,14 +147,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 /**
  * Generate a short-lived authorization code
  * Format: base64url(payload).signature
- * Payload: email:timestamp:nonce
+ * Payload: JSON with email, expiresAt, nonce, code_challenge, resource
  * Valid for 10 minutes
  */
-function generateAuthCode(email: string, tokenSecret: string): string {
+function generateAuthCode(
+  email: string,
+  tokenSecret: string,
+  codeChallenge: string,
+  resource: string
+): string {
   const timestamp = Date.now();
   const expiresAt = timestamp + (10 * 60 * 1000); // 10 minutes
   const nonce = Math.random().toString(36).substring(2, 15);
-  const payload = `${email}:${expiresAt}:${nonce}`;
+
+  // Include PKCE and resource for verification at token endpoint
+  const payload = JSON.stringify({
+    email,
+    expiresAt,
+    nonce,
+    codeChallenge,
+    resource,
+  });
 
   const signature = createHmac('sha256', tokenSecret)
     .update(payload)
@@ -168,7 +181,10 @@ function generateAuthCode(email: string, tokenSecret: string): string {
  * Note: This function needs TOKEN_SECRET from environment/GCP as a fallback
  * since it's called from other modules (api/oauth/token.ts) without async context
  */
-export function verifyAuthCode(code: string, tokenSecret?: string): { email: string; expiresAt: number } | null {
+export function verifyAuthCode(
+  code: string,
+  tokenSecret?: string
+): { email: string; expiresAt: number; codeChallenge: string; resource: string } | null {
   try {
     const [payloadB64, signature] = code.split('.');
     const payload = Buffer.from(payloadB64, 'base64url').toString('utf-8');
@@ -185,8 +201,8 @@ export function verifyAuthCode(code: string, tokenSecret?: string): { email: str
       return null;
     }
 
-    const [email, expiresAtStr, nonce] = payload.split(':');
-    const expiresAt = parseInt(expiresAtStr, 10);
+    const parsed = JSON.parse(payload);
+    const { email, expiresAt, codeChallenge, resource } = parsed;
 
     // Check expiration
     if (Date.now() > expiresAt) {
@@ -194,7 +210,7 @@ export function verifyAuthCode(code: string, tokenSecret?: string): { email: str
       return null;
     }
 
-    return { email, expiresAt };
+    return { email, expiresAt, codeChallenge, resource };
   } catch {
     return null;
   }

@@ -18,8 +18,9 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyAuthCode } from './callback.js';
-import { createHmac } from 'crypto';
+import { createHash } from 'crypto';
 import { getSecret } from '../../dist/secrets.js';
+import jwt from 'jsonwebtoken';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Fetch secrets from GCP Secret Manager (with env var fallback)
@@ -44,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const { grant_type, code, client_id, client_secret, redirect_uri } = req.body;
+  const { grant_type, code, client_id, client_secret, redirect_uri, code_verifier, resource } = req.body;
 
   // Validate required parameters
   if (grant_type !== 'authorization_code') {
@@ -59,6 +60,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(400).json({
       error: 'invalid_request',
       error_description: 'Missing required parameters: code, client_id, redirect_uri',
+    });
+    return;
+  }
+
+  // PKCE code_verifier is REQUIRED by MCP spec
+  if (!code_verifier) {
+    res.status(400).json({
+      error: 'invalid_request',
+      error_description: 'code_verifier required (PKCE)',
+    });
+    return;
+  }
+
+  // Resource parameter is REQUIRED by MCP spec (RFC8707)
+  if (!resource) {
+    res.status(400).json({
+      error: 'invalid_request',
+      error_description: 'resource parameter required (RFC8707)',
     });
     return;
   }
@@ -91,10 +110,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  // Generate long-lived access token (same as current flow)
-  const accessToken = generateAccessToken(authData.email, TOKEN_SECRET);
+  // Verify PKCE: Hash the code_verifier and compare to stored code_challenge
+  const computedChallenge = createHash('sha256')
+    .update(code_verifier)
+    .digest('base64url');
 
-  console.log(`Issued access token for ${authData.email} via OAuth flow`);
+  if (computedChallenge !== authData.codeChallenge) {
+    console.error('PKCE verification failed');
+    res.status(400).json({
+      error: 'invalid_grant',
+      error_description: 'Invalid code_verifier (PKCE verification failed)',
+    });
+    return;
+  }
+
+  // Verify resource parameter matches what was in the authorization request
+  if (resource !== authData.resource) {
+    console.error(`Resource mismatch: ${resource} !== ${authData.resource}`);
+    res.status(400).json({
+      error: 'invalid_target',
+      error_description: 'Resource parameter does not match authorization request',
+    });
+    return;
+  }
+
+  // Generate JWT access token with proper audience claim
+  const accessToken = generateJWT(authData.email, authData.resource, TOKEN_SECRET, req.headers.host as string);
+
+  console.log(`Issued access token for ${authData.email} via OAuth flow for resource ${resource}`);
 
   // Return OAuth token response
   res.status(200).json({
@@ -105,16 +148,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 }
 
 /**
- * Generate a long-lived access token (same as api/auth.ts)
- * Format: base64url(email:expiresAt).signature
+ * Generate a JWT access token with proper audience claim (MCP spec compliant)
+ *
+ * Per MCP spec, tokens MUST include audience claim to ensure they're only
+ * valid for the intended MCP server.
  */
-function generateAccessToken(email: string, tokenSecret: string): string {
-  const timestamp = Date.now();
-  const expiresAt = timestamp + (365 * 24 * 60 * 60 * 1000); // 1 year
-  const payload = `${email}:${expiresAt}`;
-  const signature = createHmac('sha256', tokenSecret)
-    .update(payload)
-    .digest('base64url');
+function generateJWT(email: string, audience: string, secret: string, issuer: string): string {
+  const payload = {
+    sub: email, // Subject: user's email
+    aud: audience, // Audience: the MCP server resource URI
+    iss: `https://${issuer}`, // Issuer: our authorization server
+    iat: Math.floor(Date.now() / 1000), // Issued at
+    exp: Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60), // Expires in 1 year
+  };
 
-  return `${Buffer.from(payload).toString('base64url')}.${signature}`;
+  return jwt.sign(payload, secret, { algorithm: 'HS256' });
 }
