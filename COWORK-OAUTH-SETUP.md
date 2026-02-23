@@ -45,27 +45,37 @@ Cowork stores token and uses it for all MCP requests
 
 ## Setup Instructions
 
-### 1. Add OAuth Client Credentials to Vercel (One-Time)
+### 1. Add OAuth Client Credentials to GCP Secret Manager (One-Time)
 
-You need to define OAuth credentials that Cowork will use:
+You need to define OAuth credentials that Cowork will use.
+
+**Option A: Use the setup script (Recommended)**
+
+The automated setup script will prompt you for OAuth credentials:
 
 ```bash
 cd ~/sentry-repos/gong-mcp-server
+./setup-gcp-secrets.sh
+```
 
+**Option B: Manual setup**
+
+```bash
 # Set a client ID (can be any string, but use something identifiable)
-echo "cowork-connector" | vercel env add COWORK_OAUTH_CLIENT_ID production preview
+echo -n "cowork-connector" | gcloud secrets create COWORK_OAUTH_CLIENT_ID --data-file=-
 
 # Generate and set a client secret
-openssl rand -base64 32 | vercel env add COWORK_OAUTH_CLIENT_SECRET production preview
+openssl rand -base64 32 | gcloud secrets create COWORK_OAUTH_CLIENT_SECRET --data-file=-
 ```
 
 **Important**: Save the client secret! You'll need to provide it to Cowork.
 
 To retrieve the client secret later:
 ```bash
-vercel env pull .env.production
-cat .env.production | grep COWORK_OAUTH_CLIENT_SECRET
+gcloud secrets versions access latest --secret="COWORK_OAUTH_CLIENT_SECRET"
 ```
+
+> **Note**: All secrets are stored in GCP Secret Manager, not Vercel environment variables. See [GCP-SECRETS-README.md](./GCP-SECRETS-README.md) for details.
 
 ### 2. Update Google Cloud Console (One-Time)
 
@@ -225,5 +235,6 @@ Existing users with manual tokens can continue using them. The OAuth flow is add
 
 For issues with OAuth integration:
 1. Check Vercel logs: `vercel logs gong-mcp-server.sentry.dev`
-2. Verify environment variables: `vercel env ls`
+2. Verify secrets are set: `gcloud secrets list`
 3. Test endpoints manually (see Testing section above)
+4. Review secret access: See [GCP-SECRETS-README.md](./GCP-SECRETS-README.md)

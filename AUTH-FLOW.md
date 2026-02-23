@@ -46,11 +46,11 @@ Token exchange with PKCE verification
 JWT access token with audience claim
 ```
 
-### 2. Manual Token Flow
+### 2. Manual Token Flow (Local Setup)
 
-**Use Case**: Claude Desktop, Claude Code CLI
+**Use Case**: Individual users adding server to local Claude Desktop configuration
 **User Experience**: Visit web page, copy token, paste into config
-**Setup Guide**: [OAUTH-SETUP.md](./OAUTH-SETUP.md)
+**Setup Guide**: [LOCAL-SETUP.md](./LOCAL-SETUP.md)
 
 **Flow Summary:**
 ```
@@ -459,8 +459,8 @@ Token: base64url(payload) + "." + base64url(signature)
 ## Related Documentation
 
 - **[MCP-SPEC-COMPLIANCE.md](./MCP-SPEC-COMPLIANCE.md)** - Detailed MCP specification compliance documentation
-- **[COWORK-OAUTH-SETUP.md](./COWORK-OAUTH-SETUP.md)** - Step-by-step guide for setting up OAuth in Cowork
-- **[OAUTH-SETUP.md](./OAUTH-SETUP.md)** - Guide for manual token flow
+- **[COWORK-OAUTH-SETUP.md](./COWORK-OAUTH-SETUP.md)** - Workspace admin guide for setting up remote OAuth connector
+- **[LOCAL-SETUP.md](./LOCAL-SETUP.md)** - Individual user guide for local configuration
 - **[GCP-SECRETS-README.md](./GCP-SECRETS-README.md)** - GCP Secret Manager setup and usage
 
 ## Security Considerations
@@ -499,5 +499,5 @@ Per OAuth 2.1 requirements, PKCE is mandatory for all authorization code flows:
 
 See individual setup guides for testing procedures:
 - OAuth Flow Testing: [COWORK-OAUTH-SETUP.md § Testing](./COWORK-OAUTH-SETUP.md#testing-the-oauth-flow)
-- Manual Token Testing: [OAUTH-SETUP.md § Testing](./OAUTH-SETUP.md#testing-the-flow)
+- Local Setup Testing: [LOCAL-SETUP.md § Verify Setup](./LOCAL-SETUP.md#verify-setup)
 - Compliance Testing: [MCP-SPEC-COMPLIANCE.md § Testing](./MCP-SPEC-COMPLIANCE.md#testing-compliance)

@@ -2,9 +2,22 @@
 
 An MCP (Model Context Protocol) server that connects Claude to your Gong data. Query calls, transcripts, deals, emails, and user activity directly from Claude.
 
-**Deployment Options:**
-- **Stdio** (local development) - Use with Claude Desktop or Claude Code CLI
-- **HTTP/Vercel** (serverless deployment) - Deploy as serverless function for team-wide Cowork access
+**Access Options:**
+- **Local Setup** - Individual users add server to their Claude Desktop configuration
+- **Remote Connector** - Workspace admin sets up OAuth connector for entire team (Cowork)
+
+## Getting Started
+
+### For End Users
+
+- **Local Setup**: [LOCAL-SETUP.md](./LOCAL-SETUP.md) - Add the server to your personal Claude Desktop config
+- **Remote Connector**: Ask your workspace admin to set up the Cowork connector (no setup needed on your end)
+
+### For Admins
+
+- **Remote Connector Setup**: [COWORK-OAUTH-SETUP.md](./COWORK-OAUTH-SETUP.md) - Set up OAuth connector for your workspace
+- **Server Deployment**: [DEPLOYMENT.md](./DEPLOYMENT.md) - Deploy to Vercel with GCP Secret Manager
+- **Authentication Flow**: [AUTH-FLOW.md](./AUTH-FLOW.md) - Complete authentication architecture documentation
 
 ## Features
 
