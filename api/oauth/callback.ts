@@ -27,8 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       getSecret('GOOGLE_CLIENT_SECRET'),
       getSecret('TOKEN_SECRET'),
     ]);
-    // Read ALLOWED_EMAIL_DOMAINS from Vercel env var (not GCP Secret Manager)
-    const allowedDomainsStr = process.env.ALLOWED_EMAIL_DOMAINS || 'sentry.io';
+    const allowedDomainsStr = await getSecret('ALLOWED_EMAIL_DOMAINS').catch(() => 'sentry.io');
     ALLOWED_DOMAINS = allowedDomainsStr.split(',').map(d => d.trim());
   } catch (error) {
     console.error('Failed to fetch configuration secrets:', error);
