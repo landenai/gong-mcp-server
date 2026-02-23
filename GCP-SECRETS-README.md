@@ -45,18 +45,20 @@ Function completes (memory cleared)
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID | api/auth.ts, api/oauth/* |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | api/auth.ts, api/oauth/* |
 | `TOKEN_SECRET` | HMAC key for signing tokens | api/auth.ts, api/oauth/* |
-| `ALLOWED_EMAIL_DOMAINS` | Allowed email domains | api/auth.ts, api/oauth/* |
 | `COWORK_OAUTH_CLIENT_ID` | Cowork OAuth client ID | api/oauth/* |
 | `COWORK_OAUTH_CLIENT_SECRET` | Cowork OAuth client secret | api/oauth/* |
 
+**Total: 6 secrets** (fits within GCP's free tier of 6 secrets)
+
 ### Vercel Environment Variables
 
-Only 2 variables needed in Vercel (not the actual secrets!):
+Only 3 variables needed in Vercel (not the actual secrets!):
 
 | Variable | Purpose |
 |----------|---------|
 | `GCP_PROJECT_ID` | Your GCP project ID |
 | `GCP_SERVICE_ACCOUNT_KEY` | Service account credentials (JSON) |
+| `ALLOWED_EMAIL_DOMAINS` | Comma-separated allowed domains (e.g., "sentry.io,getsentry.com") |
 
 ## Setup
 
